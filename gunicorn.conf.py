@@ -1,17 +1,17 @@
 import multiprocessing
 
-# 工作进程数 - 设置为CPU核心数的2-4倍
-workers = multiprocessing.cpu_count() * 2 + 1
+# 工作进程数 - 使用最少的工作进程
+workers = 1  # 减少到1个工作进程以节省内存
 
-# 工作模式 - 使用gevent处理异步请求
-worker_class = 'gevent'
+# 工作模式
+worker_class = 'sync'  # 使用同步模式减少内存开销
 
 # 超时设置
-timeout = 600  # 增加超时时间到600秒
+timeout = 120
 
-# 限制最大请求数 - 降低内存泄漏风险
-max_requests = 500
-max_requests_jitter = 50
+# 限制最大请求数
+max_requests = 100
+max_requests_jitter = 10
 
 # 日志级别
 loglevel = 'info'
@@ -19,19 +19,16 @@ loglevel = 'info'
 # 预加载应用
 preload_app = True
 
-# 限制工作进程的最大内存使用
+# 限制请求大小
 limit_request_line = 4096
 limit_request_fields = 100
 limit_request_field_size = 8190
 
-# 优雅的重启时间
-graceful_timeout = 120
+# 工作进程内存限制
+worker_memory_limit = 450 * 1024 * 1024  # 450MB per worker
+
+# 优雅重启时间
+graceful_timeout = 30
 
 # 保持连接超时
-keepalive = 5
-
-# 工作进程启动超时
-worker_tmp_timeout = 120
-
-# 添加内存监控
-worker_memory_limit = 512 * 1024 * 1024  # 512MB per worker
+keepalive = 2
