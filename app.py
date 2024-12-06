@@ -50,11 +50,26 @@ limiter = Limiter(
 )
 
 class FaceScorePredictor:
+    _instance = None
+    
+    @classmethod
+    def get_instance(cls, model_path='best_face_beauty_model.pth'):
+        if cls._instance is None:
+            cls._instance = cls(model_path)
+        return cls._instance
+    
     def __init__(self, model_path='best_face_beauty_model.pth'):
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cpu')  # 强制使用CPU以减少内存
         self.model = FaceBeautyNet().to(self.device)
-        self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+        
+        # 使用 map_location 确保模型加载到 CPU
+        state_dict = torch.load(model_path, map_location='cpu')
+        self.model.load_state_dict(state_dict)
         self.model.eval()
+        
+        # 清理不需要的变量
+        del state_dict
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
         
         self.transform = transforms.Compose([
             transforms.Resize((256, 256)),
@@ -64,66 +79,69 @@ class FaceScorePredictor:
                                std=[0.229, 0.224, 0.225])
         ])
         
-        # 修改为10分制
         self.min_score = 1.0
         self.max_score = 10.0
     
     def preprocess_image(self, image):
-        if isinstance(image, str):
-            image = Image.open(BytesIO(base64.b64decode(image))).convert('RGB')
-        elif isinstance(image, BytesIO):
-            image = Image.open(image).convert('RGB')
-        
-        if image.size[0] < 224 or image.size[1] < 224:
-            image = image.resize((256, 256), Image.Resampling.LANCZOS)
-        
-        return self.transform(image)
+        try:
+            if isinstance(image, str):
+                image = Image.open(BytesIO(base64.b64decode(image))).convert('RGB')
+            elif isinstance(image, BytesIO):
+                image = Image.open(image).convert('RGB')
+            
+            if image.size[0] < 224 or image.size[1] < 224:
+                image = image.resize((256, 256), Image.Resampling.LANCZOS)
+            
+            # 转换后释放原始图像内存
+            tensor = self.transform(image)
+            del image
+            return tensor
+        except Exception as e:
+            print(f"Error in preprocess_image: {str(e)}")
+            raise
     
     def postprocess_score(self, raw_score):
         # 将0-1的分数转换为1-10分
         scaled_score = raw_score * (self.max_score - self.min_score) + self.min_score
         scaled_score = max(self.min_score, min(self.max_score, scaled_score))
-        return scaled_score
+        return {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "raw_score": round(raw_score, 4),
+                "score": round(scaled_score, 1),  # 保留一位小数
+                "percentage": round(raw_score * 100, 2),
+                "details": {
+                    "original_score": round(raw_score, 4),
+                    "scoring_system": "1-10分制"
+                }
+            }
+        }
     
     def predict_image(self, image):
         try:
             image_tensor = self.preprocess_image(image)
-            image_tensor = image_tensor.unsqueeze(0).to(self.device)
+            image_tensor = image_tensor.unsqueeze(0)
             
             with torch.no_grad():
                 output = self.model(image_tensor)
                 raw_score = output.item()
                 
-                flipped = torch.flip(image_tensor, [3])
-                output_flip = self.model(flipped)
-                raw_score_flip = output_flip.item()
+                # 清理内存
+                del image_tensor
+                del output
+                torch.cuda.empty_cache() if torch.cuda.is_available() else None
                 
-                final_raw_score = (raw_score + raw_score_flip) / 2
-                scaled_score = self.postprocess_score(final_raw_score)
-                
-                return {
-                    "code": 0,
-                    "message": "success",
-                    "data": {
-                        "raw_score": round(final_raw_score, 4),
-                        "score": round(scaled_score, 1),  # 保留一位小数
-                        "percentage": round(final_raw_score * 100, 2),
-                        "details": {
-                            "original_score": round(raw_score, 4),
-                            "flipped_score": round(raw_score_flip, 4),
-                            "scoring_system": "1-10分制"
-                        }
-                    }
-                }
+                return self.postprocess_score(raw_score)
         except Exception as e:
-            return {
-                "code": -1,
-                "message": str(e),
-                "data": None
-            }
+            print(f"Error in predict_image: {str(e)}")
+            raise
+        finally:
+            # 确保清理内存
+            torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
-# 初始化预测器
-predictor = FaceScorePredictor()
+# 使用单例模式初始化预测器
+predictor = FaceScorePredictor.get_instance()
 
 # 添加API安全相关的函数
 def generate_signature(api_key, timestamp, params=None):
