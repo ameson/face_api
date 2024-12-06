@@ -19,9 +19,10 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+        "origins": "*",
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "X-API-Key", "X-Timestamp", "X-Signature"]
+        "allow_headers": ["Content-Type", "X-API-Key", "X-Timestamp", "X-Signature"],
+        "expose_headers": ["Content-Type", "X-API-Key", "X-Timestamp", "X-Signature"]
     }
 })
 

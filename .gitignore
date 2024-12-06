@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+
+# Environment
+.env
+.env.local
+
+# Model files (you might want to store these separately due to size)
+*.pth
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
